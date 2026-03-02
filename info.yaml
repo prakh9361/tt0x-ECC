@@ -27,34 +27,34 @@ project:
 # This section is for the datasheet/website. Use descriptive names (e.g., RX, TX, MOSI, SCL, SEG_A, etc.).
 pinout:
   # Inputs
-  ui[0]: ""
-  ui[1]: ""
-  ui[2]: ""
-  ui[3]: ""
-  ui[4]: ""
-  ui[5]: ""
-  ui[6]: ""
-  ui[7]: ""
+  ui[0]: "data_in[0]"
+  ui[1]: "data_in[0]"
+  ui[2]: "data_in[0]"
+  ui[3]: "data_in[0]"
+  ui[4]: "data_in[0]"
+  ui[5]: "data_in[0]"
+  ui[6]: "data_in[0]"
+  ui[7]: "data_in[0]"
 
   # Outputs
-  uo[0]: ""
-  uo[1]: ""
-  uo[2]: ""
-  uo[3]: ""
-  uo[4]: ""
-  uo[5]: ""
-  uo[6]: ""
-  uo[7]: ""
+  uo[0]: "data_out[0]"
+  uo[1]: "data_out[0]"
+  uo[2]: "data_out[0]"
+  uo[3]: "data_out[0]"
+  uo[4]: "data_out[0]"
+  uo[5]: "data_out[0]"
+  uo[6]: "data_out[0]"
+  uo[7]: "data_out[0]"
 
   # Bidirectional pins
-  uio[0]: ""
-  uio[1]: ""
-  uio[2]: ""
-  uio[3]: ""
-  uio[4]: ""
-  uio[5]: ""
-  uio[6]: ""
-  uio[7]: ""
+  uio[0]: "input: load_k"
+  uio[1]: "input: load_x"
+  uio[2]: "input: load_y"
+  uio[3]: "input: start"
+  uio[4]: "input: read_sel (0=X, 1=Y)"
+  uio[5]: "output: status_done"
+  uio[6]: "output: status_busy"
+  uio[7]: "output: status_error"
 
 # Do not change!
 yaml_version: 6
