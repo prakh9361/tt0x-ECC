@@ -27,6 +27,7 @@ module ecc_core_gf2_8 (
 
     // --- FSM States ---
     localparam IDLE       = 5'd0;
+    localparam SCAN_BIT   = 5'd18;
     // Doubling States (R = 2R)
     localparam DBL_LAM_1  = 5'd1;
     localparam DBL_LAM_2  = 5'd2;
@@ -114,10 +115,31 @@ module ecc_core_gf2_8 (
                     done <= 0; error <= 0;
                     if (start) begin
                         busy <= 1;
-                        xr <= xg;  // R = G (Assume K[7] is 1)
+                        bit_idx <= 7;      // Start scanning from the absolute top bit
+                        state <= SCAN_BIT; // Go to our new scanning state
+                    end
+                end
+
+                // --- New State: Find the first '1' ---
+                SCAN_BIT: begin
+                    if (k[bit_idx] == 1'b1) begin
+                        // Found the MSB! Initialize R = G here.
+                        xr <= xg;
                         yr <= yg;
-                        bit_idx <= 6; // Start at bit 6
-                        state <= DBL_LAM_1;
+                        // Now drop into the normal loop for the REST of the bits
+                        state <= NEXT_BIT; 
+                    end else begin
+                        // It was a 0. Keep scanning.
+                        if (bit_idx == 0) begin
+                            // The entire key was 0. This results in the Point at Infinity.
+                            // We don't have infinity hardware, so throw an error.
+                            error <= 1; 
+                            done <= 1;
+                            busy <= 0;
+                            state <= IDLE;
+                        end else begin
+                            bit_idx <= bit_idx - 1;
+                        end
                     end
                 end
 
