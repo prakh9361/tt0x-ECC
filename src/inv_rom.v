@@ -264,6 +264,6 @@ module inv_rom (
             8'd254: inv_out = 8'd65;
             8'd255: inv_out = 8'd28;
             default: inv_out = 8'd0;
-        caseend
+        endcase
     end
 endmodule
