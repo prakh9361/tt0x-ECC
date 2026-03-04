@@ -98,7 +98,14 @@ module ecc_core_gf2_8 (
             ADD_X3_2:  begin alu_a = temp; alu_b = lam ^ xr ^ xg ^ CURVE_A; alu_op = 2'b00; end
             ADD_Y3_1:  begin alu_a = x1_saved; alu_b = temp; alu_op = 2'b00; end             
             ADD_Y3_2:  begin alu_a = lam; alu_b = temp; alu_op = 2'b10; end                  
-            ADD_Y3_3:  begin alu_a = temp; alu_b = xr ^ yr; alu_op = 2'b00; end              
+            ADD_Y3_3:  begin alu_a = temp; alu_b = xr ^ yr; alu_op = 2'b00; end 
+
+            // Point validation routing 
+            VAL_Y2:    begin alu_a = yg; alu_op = 2'b01; end                      // y^2
+            VAL_XY:    begin alu_a = xg; alu_b = yg; alu_op = 2'b10; end          // x * y
+            VAL_LEFT:  begin alu_a = temp; alu_b = lam; alu_op = 2'b00; end       // y^2 + xy
+            VAL_X2:    begin alu_a = xg; alu_op = 2'b01; end                      // x^2
+            VAL_X3:    begin alu_a = xg; alu_b = lam; alu_op = 2'b10; end         // x^3
 
             default: ;
         endcase
