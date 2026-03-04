@@ -10,6 +10,7 @@ from cocotb.triggers import ClockCycles, RisingEdge
 # =========================================================================
 POLY = 0x11B
 CURVE_A = 0x01
+CURVE_B = 0x01  # <--- Updated to match your RTL
 
 def gf_add(a, b):
     return a ^ b
@@ -33,6 +34,29 @@ def gf_inv(a):
             return i
     return 0
 
+def is_point_on_curve(x, y):
+    """Check if (x, y) satisfies y^2 + xy = x^3 + ax^2 + b"""
+    if x == 0 and y == 0:
+        return False # (0,0) is our marker for Point at Infinity, but not a valid affine point here
+    y_sq = gf_mult(y, y)
+    xy = gf_mult(x, y)
+    left = gf_add(y_sq, xy)
+    
+    x_sq = gf_mult(x, x)
+    x_cb = gf_mult(x_sq, x)
+    ax_sq = gf_mult(CURVE_A, x_sq)
+    right = gf_add(gf_add(x_cb, ax_sq), CURVE_B)
+    
+    return left == right
+
+def find_valid_base_point():
+    """Finds the first valid (x,y) point on the curve to use for testing."""
+    for x in range(1, 256):
+        for y in range(1, 256):
+            if is_point_on_curve(x, y):
+                return x, y
+    raise ValueError("No valid points found on this curve!")
+
 def point_double(x1, y1):
     lam = gf_add(x1, gf_mult(y1, gf_inv(x1)))
     lam_sq = gf_mult(lam, lam)
@@ -44,6 +68,17 @@ def point_double(x1, y1):
     return x3, y3
 
 def point_add(x1, y1, x2, y2):
+    # If point is at infinity (represented by x=0, y=0 in this test structure)
+    if x1 == 0 and y1 == 0: return x2, y2
+    if x2 == 0 and y2 == 0: return x1, y1
+    
+    # If points are inverses of each other (x1 == x2, y1 != y2 or y1 == x1 + y2) -> return Infinity
+    if x1 == x2:
+        if y1 == gf_add(x2, y2):
+            return 0, 0
+        else:
+            return point_double(x1, y1)
+
     lam = gf_mult(gf_add(y1, y2), gf_inv(gf_add(x1, x2)))
     lam_sq = gf_mult(lam, lam)
     x3 = gf_add(gf_add(gf_add(gf_add(lam_sq, lam), x1), x2), CURVE_A)
@@ -63,8 +98,13 @@ def ecc_scalar_mult_golden(k, xg, yg):
     xr, yr = xg, yg
     for i in range(msb - 1, -1, -1):
         xr, yr = point_double(xr, yr)
+        # If doubling hit infinity, propagate it safely
+        if xr == 0 and yr == 0:
+            pass # Stays at infinity
+            
         if k & (1 << i):
             xr, yr = point_add(xr, yr, xg, yg)
+            
     return xr, yr
 
 # =========================================================================
@@ -95,7 +135,7 @@ async def load_params(dut, k, xg, yg):
 
     dut.uio_in.value = 0
 
-async def start_and_wait(dut, timeout=500):
+async def start_and_wait(dut, timeout=1000):
     dut.uio_in.value = 0b00001000
     await ClockCycles(dut.clk, 1)
     dut.uio_in.value = 0
@@ -110,8 +150,58 @@ def read_result(dut):
     return int(dut.uo_out.value)
 
 # =========================================================================
-# EXHAUSTIVE TEST
+# TESTS
 # =========================================================================
+
+@cocotb.test()
+async def test_invalid_curve_point(dut):
+    """Test that the hardware correctly rejects points that do not lie on the elliptic curve."""
+    clock = Clock(dut.clk, 10, unit="us")
+    cocotb.start_soon(clock.start())
+    await reset_dut(dut)
+
+    # Inject a mathematically invalid point (guaranteed to not equal B=1)
+    # Note: 0x00, 0x00 is invalid on b=1
+    INVALID_X, INVALID_Y = 0x00, 0x00 
+    
+    await load_params(dut, k=5, xg=INVALID_X, yg=INVALID_Y)
+    done = await start_and_wait(dut)
+    
+    assert done, "Hardware timeout waiting for invalid point validation"
+    
+    # Check if hardware caught the invalid point and asserted the error flag
+    error_flag = (int(dut.uio_out.value) >> 7) & 1
+    assert error_flag == 1, f"Hardware ACCEPTED an invalid point ({INVALID_X:#04x}, {INVALID_Y:#04x})! Error flag was not raised."
+    
+    dut._log.info("SUCCESS: Hardware successfully rejected the invalid curve point!")
+
+
+@cocotb.test()
+async def test_poi_k_zero(dut):
+    """Test the Point at Infinity case where scalar k = 0."""
+    clock = Clock(dut.clk, 10, unit="us")
+    cocotb.start_soon(clock.start())
+    await reset_dut(dut)
+
+    XG, YG = find_valid_base_point()
+
+    # K=0 represents the Point at Infinity
+    await load_params(dut, k=0, xg=XG, yg=YG)
+    done = await start_and_wait(dut)
+    
+    assert done, "Hardware timeout waiting for k=0 operation"
+    
+    # Read Status Flags (uio_out[7] is status_error)
+    error_flag = (int(dut.uio_out.value) >> 7) & 1
+    assert error_flag == 1, "Hardware failed to raise ERROR flag for Point at Infinity (k=0)"
+    
+    # Verify outputs are scrubbed to 0
+    dut.uio_in.value = 0b00000000 # Read X
+    await ClockCycles(dut.clk, 1)
+    assert read_result(dut) == 0, "Result X should be 0 when returning Point at Infinity"
+
+    dut._log.info("SUCCESS: Point at Infinity correctly raises error flag and returns 0!")
+
 
 @cocotb.test()
 async def test_exhaustive_keys(dut):
@@ -120,11 +210,10 @@ async def test_exhaustive_keys(dut):
     cocotb.start_soon(clock.start())
     await reset_dut(dut)
 
-    # Base point coordinates to test against
-    XG, YG = 0x53, 0xCA
+    # Automatically find a valid point for the configured curve
+    XG, YG = find_valid_base_point()
+    dut._log.info(f"Using Valid Base Point on Curve B={CURVE_B:#04x}: XG={XG:#04x}, YG={YG:#04x}")
 
-    # Test every single key from 1 to 255
-    # (k=0 maps to the point at infinity, which triggers the error flag in hardware)
     for k in range(1, 256):
         # 1. Compute expected result in Python
         expected_x, expected_y = ecc_scalar_mult_golden(k, XG, YG)
@@ -134,6 +223,9 @@ async def test_exhaustive_keys(dut):
         done = await start_and_wait(dut)
         
         assert done, f"Hardware timeout for k={k:#04x}"
+        
+        # Hardware Error Flag Check for intermediate POI
+        error_flag = (int(dut.uio_out.value) >> 7) & 1
         
         # Read X
         dut.uio_in.value = 0b00000000
@@ -146,7 +238,12 @@ async def test_exhaustive_keys(dut):
         hw_y = read_result(dut)
 
         # 3. Exhaustively Compare
-        assert hw_x == expected_x, f"X Mismatch at k={k:#04x}! HW: {hw_x:#04x}, Expected: {expected_x:#04x}"
-        assert hw_y == expected_y, f"Y Mismatch at k={k:#04x}! HW: {hw_y:#04x}, Expected: {expected_y:#04x}"
+        if expected_x == 0 and expected_y == 0:
+            assert error_flag == 1, f"Expected ERROR flag for POI at k={k:#04x}"
+            assert hw_x == 0 and hw_y == 0, f"Expected 0,0 output for POI at k={k:#04x}"
+        else:
+            assert error_flag == 0, f"Unexpected ERROR flag raised at k={k:#04x}"
+            assert hw_x == expected_x, f"X Mismatch at k={k:#04x}! HW: {hw_x:#04x}, Expected: {expected_x:#04x}"
+            assert hw_y == expected_y, f"Y Mismatch at k={k:#04x}! HW: {hw_y:#04x}, Expected: {expected_y:#04x}"
         
     dut._log.info("SUCCESS: All 255 K scalar operations completely match the Python golden model!")
