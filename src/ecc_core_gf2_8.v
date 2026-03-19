@@ -16,7 +16,7 @@ module ecc_core_gf2_8 (
 );
 
     // Curve Parameter 'a' , 'b' or y^2 + xy = x^3 + ax^2 + b
-    localparam CURVE_A = 8'h01;
+    localparam CURVE_A = 8'h20;
     localparam CURVE_B = 8'h01;
 
     // --- Registers ---
