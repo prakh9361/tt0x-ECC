@@ -33,6 +33,7 @@ module ecc_core_gf2_8 (
     reg [2:0] bit_idx;
     reg [7:0] x1_saved;
     reg       r_is_inf;
+    reg       dbl_only;   // skip ADD_CHK after doubling when R==G
 
     // --- FSM States ---
     localparam IDLE       = 5'd0;
@@ -108,7 +109,6 @@ module ecc_core_gf2_8 (
             ADD_X3_2: begin alu_a = temp; alu_b = lam ^ xr ^ xg ^ CURVE_A; alu_op = 2'b00; end
             ADD_Y3_1: begin alu_a = x1_saved; alu_b = xr;       alu_op = 2'b00; end
             ADD_Y3_2: begin alu_a = lam;  alu_b = temp;         alu_op = 2'b10; end
-            // Fix: use registered temp (lam*(x1^x3)) instead of alu_out to break loop
             ADD_Y3_3: begin alu_a = temp; alu_b = xr ^ yr;      alu_op = 2'b00; end
 
             default: ;
@@ -124,6 +124,7 @@ module ecc_core_gf2_8 (
             done     <= 0; busy <= 0; error <= 0;
             bit_idx  <= 0; r_is_inf <= 0;
             lam      <= 0; temp <= 0; x1_saved <= 0;
+            dbl_only <= 0;
         end else begin
             if (load_k) k  <= data_in;
             if (load_x) xg <= data_in;
@@ -169,7 +170,15 @@ module ecc_core_gf2_8 (
                 DBL_X3_2: begin xr   <= alu_out; state <= DBL_Y3_1; end
                 DBL_Y3_1: begin temp <= alu_out; state <= DBL_Y3_2; end
                 DBL_Y3_2: begin lam  <= alu_out; state <= DBL_Y3_3; end
-                DBL_Y3_3: begin yr   <= alu_out; state <= ADD_CHK;  end
+                DBL_Y3_3: begin
+                    yr <= alu_out;
+                    if (dbl_only) begin
+                        dbl_only <= 1'b0;
+                        state    <= NEXT_BIT;
+                    end else begin
+                        state    <= ADD_CHK;
+                    end
+                end
 
                 // ---------------------------------------------------
                 // Point Addition
@@ -182,10 +191,12 @@ module ecc_core_gf2_8 (
                             state <= NEXT_BIT;
                         end else if (xr == xg) begin
                             if (yr == (xg ^ yg)) begin
+                                // R = -G, result is infinity
                                 r_is_inf <= 1'b1; state <= NEXT_BIT;
                             end else begin
-                                error <= 1'b1; done <= 1'b1; busy <= 1'b0;
-                                state <= IDLE;
+                                // R == G, double only — do not add again
+                                dbl_only <= 1'b1;
+                                state    <= DBL_LAM_1;
                             end
                         end else begin
                             state <= ADD_LAM_1;
@@ -200,7 +211,6 @@ module ecc_core_gf2_8 (
                 ADD_X3_1:  begin temp <= alu_out; state <= ADD_X3_2;  end
                 ADD_X3_2:  begin xr   <= alu_out; state <= ADD_Y3_1;  end
                 ADD_Y3_1:  begin temp <= alu_out; state <= ADD_Y3_2;  end
-                // Save lam*(x1^x3) into temp so ADD_Y3_3 can read it as a register
                 ADD_Y3_2:  begin temp <= alu_out; state <= ADD_Y3_3;  end
                 ADD_Y3_3:  begin yr   <= alu_out; state <= NEXT_BIT;  end
 
