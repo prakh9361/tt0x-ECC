@@ -126,9 +126,11 @@ module ecc_core_gf2_8 (
             lam      <= 0; temp <= 0; x1_saved <= 0;
             dbl_only <= 0;
         end else begin
-            if (load_k) k  <= data_in;
-            if (load_x) xg <= data_in;
-            if (load_y) yg <= data_in;
+            if (state == IDLE) begin
+                if (load_k) k  <= data_in;
+                if (load_x) xg <= data_in;
+                if (load_y) yg <= data_in;
+            end
 
             case (state)
 
