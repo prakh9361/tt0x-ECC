@@ -23,7 +23,7 @@ module ecc_core_gf2_8 (
 );
 
     localparam CURVE_A = 8'h20;
-    localparam CURVE_B = 8'h01;
+    // localparam CURVE_B = 8'h01;
 
     // --- Registers ---
     reg [7:0] k;
