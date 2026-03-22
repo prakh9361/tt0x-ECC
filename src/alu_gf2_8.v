@@ -15,6 +15,8 @@ module alu_gf2_8 (
     reg [7:0] p;
 
     always @(*) begin
+        v = 8'b0;
+        p = 8'b0;
         case (op)
             2'b00: begin
                 // Addition and Subtraction in GF(2^m) are identical: just XOR
