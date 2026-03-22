@@ -60,5 +60,6 @@ module tt_um_ecc_gf2_8 (
         .busy(status_busy),
         .error(status_error)
     );
+    wire _unused = &{1'b0, ena, uio_in[7:5]};
 
 endmodule
